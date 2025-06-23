@@ -1,0 +1,23 @@
+BasedOnStyle: LLVM
+UseTab: Never
+IndentWidth: 4
+TabWidth: 4
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: MultiLine
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortFunctionsOnASingleLine: None
+IndentCaseLabels: false
+ColumnLimit: 120
+AccessModifierOffset: -4
+FixNamespaceComments: false
+PointerAlignment: Right
+AlignEscapedNewlines: DontAlign
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: None
+AlignOperands: Align
+BreakBeforeBinaryOperators : NonAssignment
+AlignArrayOfStructures: Right
+SortIncludes: CaseInsensitive
+InsertNewlineAtEOF: true
