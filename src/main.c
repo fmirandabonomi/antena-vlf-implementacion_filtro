@@ -24,12 +24,12 @@ int main(void)
     } sta;
     for (int i = 0; i < NSAMPLES; ++i) {
         int32_t aux         = impulse_response[i];
-        aux                 = pole_24r25_3f49(aux, sta.mem.px1, sta.ph.px1);
-        aux                 = pole_24r25_3f49(aux, sta.mem.px2, sta.ph.px2);
+        aux                 = pole_24r25_3f49(aux, &sta.mem.px1, sta.ph.px1);
+        aux                 = pole_24r25_3f49(aux, &sta.mem.px2, sta.ph.px2);
         aux                 = pole_1r_0f(aux, sta.mem.pz1);
         aux                 = pole_1r_0f(aux, sta.mem.pz2);
-        aux                 = comb_14d(aux, sta.mem.cmb1, sta.ph.cmb1);
-        aux                 = comb_14d(aux, sta.mem.cmb2, sta.ph.cmb2);
+        aux                 = comb_14d(aux, &sta.mem.cmb1, sta.ph.cmb1);
+        aux                 = comb_14d(aux, &sta.mem.cmb2, sta.ph.cmb2);
         impulse_response[i] = aux;
     }
     for (int i = 0; i < NSAMPLES; ++i) {
