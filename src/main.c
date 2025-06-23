@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+// #define STEP_STIMULUS // if not defined, delta stimulus
+
 int main(void)
 {
     enum { NSAMPLES = 1024, CS_GUARDA = 4 };
@@ -23,7 +25,7 @@ int main(void)
         } ph;
     } sta;
     for (int i = 0; i < NSAMPLES; ++i) {
-#if 1 // step
+#ifdef STEP_STIMULUS
         int32_t aux = 1000 << CS_GUARDA;
 #else
         int32_t aux = impulse_response[i];
