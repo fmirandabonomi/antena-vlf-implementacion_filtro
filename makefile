@@ -19,6 +19,10 @@ PROG = $(BIN_DIR)/$(PROGNAME)
 
 all: $(PROG)
 
+ver: $(PROG)
+	$(PROG) >$(BUILD_DIR)/salida.txt
+	python vista.py
+
 $(PROG): $(OBJ_FILES) | $(BIN_DIR)
 	$(LD) $(LFLAGS) -o $(PROG) $(OBJ_FILES)
 
