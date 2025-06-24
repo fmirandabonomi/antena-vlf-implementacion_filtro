@@ -10,7 +10,7 @@ BIN_DIR = $(BUILD_DIR)/bin
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -std=c99
 LD = gcc
-LFLAGS = 
+LFLAGS = -lm
 
 SRC_FILES = $(wildcard $(SRC_DIR)/*.c)
 OBJ_FILES = $(addsuffix .o,$(addprefix $(OBJ_DIR)/,$(basename $(notdir $(SRC_FILES)))))
@@ -20,7 +20,8 @@ PROG = $(BIN_DIR)/$(PROGNAME)
 all: $(PROG)
 
 ver: $(PROG)
-	$(PROG) >$(BUILD_DIR)/salida.txt
+	$(PROG) filter >$(BUILD_DIR)/salida_filtro.txt
+	$(PROG) nco >$(BUILD_DIR)/salida_nco.txt
 	python vista.py
 
 $(PROG): $(OBJ_FILES) | $(BIN_DIR)
