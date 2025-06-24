@@ -1,39 +1,72 @@
 #ifndef BLOCKS_H
 #define BLOCKS_H
+#include <assert.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
-
 #ifdef TRACE_EXEC
 #include <stdio.h>
 #endif
 
-#define DELAY(delay, phase, mem, mem_size) \
+#define BLOCKS_H_PI 3.14159265358979323846
+
+#define MEM_SZ_(state) (sizeof((state)->mem) / sizeof(*(state)->mem))
+#define DELAY_(delay, phase, mem, mem_size) \
     (mem)[(((unsigned)(phase) - ((unsigned)(delay) - 1U)) % (unsigned)(mem_size))]
 
-#define SHIFT_IN(elem, phase, mem, mem_size) \
+#define DELAY(delay, state) DELAY_(delay, (state)->phase, (state)->mem, MEM_SZ_(state))
+
+#define SHIFT_IN_(elem, phase, mem, mem_size) \
     do { \
         ++(phase); \
         (mem)[(unsigned)(phase) % (unsigned)(mem_size)] = (elem); \
     } while (0)
 
-inline static int32_t pole_24r25_3f49(int32_t input, int32_t (*mem)[2], uint8_t *phase)
-{
-    // 30 bit fraccion
-    int32_t a1     = -1910917036L;
-    int32_t a2     = 989560464L;
-    int32_t t1     = (-(int64_t)a1 * (int64_t)DELAY(1, *phase, *mem, 2)) >> 30;
-    int32_t t2     = (-(int64_t)a2 * (int64_t)DELAY(2, *phase, *mem, 2)) >> 30;
-    int32_t output = t1 + t2 + input;
+#define SHIFT_IN(elem, state) SHIFT_IN_(elem, (state)->phase, (state)->mem, MEM_SZ_(state))
 
-#ifdef TRACE_EXEC
-    printf("pd[%p]: input %d, output %d, input-1: %d, input-2: %d\n", (void *)mem, input, output, mem[(*phase) % 2],
-           mem[(*phase - 1) % 2]);
+typedef struct ConjugatePolePair_s {
+    int32_t a1;
+    int32_t a2;
+    int32_t mem[2];
+    unsigned phase;
+} *ConjugatePolePair;
+
+#ifndef POINT_POSITION
+#define POINT_POSITION 30
 #endif
-    SHIFT_IN(output, *phase, *mem, 2);
+
+inline static void ConjugatePolePair_initCoef(ConjugatePolePair state, double a1, double a2)
+{
+    assert(state);
+    a1 = a1 * (1 << POINT_POSITION);
+    a2 = a2 * (1 << POINT_POSITION);
+    assert(a1 <= INT32_MAX && a1 > INT32_MIN);
+    assert(a2 <= INT32_MAX && a2 > INT32_MIN);
+    *state = (struct ConjugatePolePair_s){.a1 = (int32_t)a1, .a2 = (int32_t)a2};
+}
+
+inline static void ConjugatePolePair_initRadFrec(ConjugatePolePair state, double r, double frec, double fsamp)
+{
+    assert(state);
+    ConjugatePolePair_initCoef(state, -2 * r * cos(2 * BLOCKS_H_PI * frec / fsamp), pow(r, 2));
+}
+
+inline static int32_t ConjugatePolePair_step(ConjugatePolePair state, int32_t input)
+{
+    int32_t t1     = (-(int64_t)state->a1 * (int64_t)DELAY(1, state)) >> POINT_POSITION;
+    int32_t t2     = (-(int64_t)state->a2 * (int64_t)DELAY(2, state)) >> POINT_POSITION;
+    int32_t output = t1 + t2 + input;
+#ifdef TRACE_EXEC
+    printf("pd[%p]: input %d, output %d, input-1: %d, input-2: %d\n", (void *)state, input, output, DELAY(1, state),
+           DELAY(2, state));
+#endif
+    SHIFT_IN(output, state);
     return output;
 }
 
-inline static int32_t pole_1r_0f(int32_t input, int32_t mem[1])
+const struct ConjugatePolePair_s conjugatePole_24r25_3f49 = {.a1 = -1910917036L, .a2 = 989560464L};
+
+inline static int32_t poleAtFrecZero_step(int32_t mem[1], int32_t input)
 {
     int32_t output = input + *mem;
 #ifdef TRACE_EXEC
@@ -43,67 +76,78 @@ inline static int32_t pole_1r_0f(int32_t input, int32_t mem[1])
     return output;
 }
 
-inline static int32_t comb_14d(int32_t input, int32_t (*mem)[16], uint8_t *phase)
+typedef struct Comb_s {
+    int32_t *memPtr;
+    unsigned delay;
+    unsigned phase;
+    unsigned memSz;
+} *Comb;
+
+inline static void Comb_init(Comb state, unsigned delay, unsigned memSz, int32_t mem[static memSz])
 {
-    int32_t output = input - DELAY(14, *phase, *mem, 16);
+    state->memPtr = mem;
+    state->delay  = delay;
+    state->memSz  = memSz;
+    state->phase  = 0;
+}
+
+inline static int32_t Comb_step(Comb state, int32_t input)
+{
+    int32_t output = input - DELAY_(14, state->phase, state->memPtr, state->memSz);
 #ifdef TRACE_EXEC
-    printf("cmb[%p]: input: %d, output: %d\n", mem, input, output);
+    printf("cmb[%p]: input: %d, output: %d\n", state, input, output);
     for (int i = 0; i < 14; ++i) {
-        printf("input-%d: %d ", i + 1, DELAY(i + 1, *phase, *mem, 16));
+        printf("input-%d: %d ", i + 1, DELAY(i + 1, state->phase, state->memPtr, state->memSz));
         printf("\n");
     }
 #endif
-    SHIFT_IN(input, *phase, *mem, 16);
+    SHIFT_IN_(input, state->phase, state->memPtr, state->memSz);
     return output;
 }
 
-#ifndef PI
-#define PI 3.14159265358979323846
-#endif
-#ifndef AMPLITUDE
-#define AMPLITUDE INT16_MAX
+#ifndef NCO_AMPLITUDE
+#define NCO_AMPLITUDE INT16_MAX
 #endif
 #ifndef NCO_GUARD_BITS
 #define NCO_GUARD_BITS 3
 #endif
-#define NCO_STATE enum { COEF_REAL, COEF_IMAG, STATE_REAL, STATE_IMAG }
 
-inline static void nco_init(int32_t (*mem)[4], double outFreq, double sampFreq)
+typedef struct Nco_s {
+    int32_t coefReal, coefImag, stateReal, stateImag;
+} *Nco;
+
+typedef struct CplxI16_s {
+    int16_t real;
+    int16_t imag;
+} CplxI16;
+
+inline static void Nco_init(Nco state, double outFreq, double sampFreq)
 {
-    NCO_STATE;
-    (*mem)[COEF_REAL]  = (int32_t)((1 << 30) * cos(-2 * PI * outFreq / sampFreq));
-    (*mem)[COEF_IMAG]  = (int32_t)((1 << 30) * sin(-2 * PI * outFreq / sampFreq));
-    (*mem)[STATE_REAL] = (int32_t)INT16_MAX << NCO_GUARD_BITS;
-    (*mem)[STATE_IMAG] = 0;
+    state->coefReal  = (int32_t)((1 << POINT_POSITION) * cos(2 * BLOCKS_H_PI * outFreq / sampFreq));
+    state->coefImag  = (int32_t)((1 << POINT_POSITION) * sin(2 * BLOCKS_H_PI * outFreq / sampFreq));
+    state->stateReal = (int32_t)NCO_AMPLITUDE << NCO_GUARD_BITS;
+    state->stateImag = 0;
 }
 #define MUL_I64(a, b) ((int64_t)(a) * (int64_t)(b))
 
-inline static void nco_sample(int32_t (*mem)[4], int16_t (*cplx)[2])
+inline static CplxI16 Nco_sample(Nco state)
 {
-    NCO_STATE;
-    int32_t sta_r = (*mem)[STATE_REAL] >> NCO_GUARD_BITS;
-    int32_t sta_i = (*mem)[STATE_IMAG] >> NCO_GUARD_BITS;
-    if (!sta_i || sta_r > AMPLITUDE || sta_r < -AMPLITUDE) {
-        sta_r              = sta_r >= 0 ? AMPLITUDE : -AMPLITUDE;
-        sta_i              = 0;
-        (*mem)[STATE_REAL] = sta_r << NCO_GUARD_BITS;
-        (*mem)[STATE_IMAG] = 0;
-    } else if (!sta_r || sta_i > AMPLITUDE || sta_r < -AMPLITUDE) {
-        sta_r              = 0;
-        sta_i              = sta_i >= 0 ? AMPLITUDE : -AMPLITUDE;
-        (*mem)[STATE_REAL] = 0;
-        (*mem)[STATE_IMAG] = sta_i << NCO_GUARD_BITS;
+    CplxI16 output;
+    int32_t sta_r = state->stateReal;
+    int32_t sta_i = state->stateImag;
+    if (!sta_i || sta_r > (NCO_AMPLITUDE << NCO_GUARD_BITS) || sta_r < -(NCO_AMPLITUDE << NCO_GUARD_BITS)) {
+        sta_r = (sta_r >= 0 ? NCO_AMPLITUDE : -NCO_AMPLITUDE) << NCO_GUARD_BITS;
+        sta_i = 0;
+    } else if (!sta_r || sta_i > (NCO_AMPLITUDE << NCO_GUARD_BITS) || sta_r < -(NCO_AMPLITUDE << NCO_GUARD_BITS)) {
+        sta_r = 0;
+        sta_i = (sta_i >= 0 ? NCO_AMPLITUDE : -NCO_AMPLITUDE) << NCO_GUARD_BITS;
     }
-    (*cplx)[0] = sta_r;
-    (*cplx)[1] = sta_i;
-    (*mem)[STATE_REAL] =
-        (int32_t)((MUL_I64((*mem)[COEF_REAL], (*mem)[STATE_REAL]) - MUL_I64((*mem)[COEF_IMAG], (*mem)[STATE_IMAG]))
-                  >> 30);
-    (*mem)[STATE_IMAG] =
-        (int32_t)((MUL_I64((*mem)[COEF_IMAG], (*mem)[STATE_REAL]) + MUL_I64((*mem)[COEF_REAL], (*mem)[STATE_IMAG]))
-                  >> 30);
+    output.real      = sta_r >> NCO_GUARD_BITS;
+    output.imag      = sta_i >> NCO_GUARD_BITS;
+    state->stateReal = (int32_t)((MUL_I64(state->coefReal, sta_r) - MUL_I64(state->coefImag, sta_i)) >> POINT_POSITION);
+    state->stateImag = (int32_t)((MUL_I64(state->coefImag, sta_r) + MUL_I64(state->coefReal, sta_i)) >> POINT_POSITION);
+    return output;
 }
-#undef NCO_STATE
 #undef MUL_I64
 
 #endif // BLOCKS_H
