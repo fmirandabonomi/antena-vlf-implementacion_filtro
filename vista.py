@@ -17,7 +17,7 @@ plt.title("Respuesta en el tiempo del filtro demo")
 
 def periodogram(signal):
     f=np.fft.fftfreq(signal.size,d=1/fs)
-    d=np.abs(np.fft.fft(signal))**2/signal.size
+    d=np.abs(np.fft.fft(signal))**2/(signal.size*fs)
     f,d=np.fft.fftshift(f),np.fft.fftshift(d)
     d = 10*np.log10(d)
     return f,d
